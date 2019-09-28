@@ -193,14 +193,6 @@ class Plugin extends \System\Classes\PluginBase
                 'timestamps' => true,
                 'pivot' => ['permission_state'],
             ];
-            $model->bindEvent('model.afterCreate', function() use ($model) {
-                $permissions = PermissionModel::all();
-                if ($permissions) {
-                    foreach($permissions as $permission) {
-                        $model->user_permissions()->attach($permission->id);
-                    }
-                }
-            });
         });
     }
 
