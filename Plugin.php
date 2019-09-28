@@ -70,69 +70,33 @@ class Plugin extends \System\Classes\PluginBase
         });
     }
 
-    protected function extendUserModel()
-    {
-        function getAllowedPermissions($model) {
-            if (!$model->is_activated) {
-                return [];
-            }
-            $groupPermissionsQuery = $model->user_permissions()->where('jbonnydev_userpermissions_user_permission.permission_state', 2)
-            ->join('users_groups', 'jbonnydev_userpermissions_user_permission.user_id', '=', 'users_groups.user_id')
-            ->join('jbonnydev_userpermissions_group_permission', function ($join) {
-                $join->on('users_groups.user_group_id', '=', 'jbonnydev_userpermissions_group_permission.group_id')
-                ->on(
-                    'jbonnydev_userpermissions_group_permission.permission_id',
-                    '=',
-                    'jbonnydev_userpermissions_user_permission.permission_id'
-                )
-                ->where('jbonnydev_userpermissions_group_permission.permission_state', '=', 1);
-            })
-            ->join('jbonnydev_userpermissions_permissions as permissions',
-                'jbonnydev_userpermissions_group_permission.permission_id',
-                '=',
-                'permissions.id'
-            )->select(
-                'permissions.id',
-                'permissions.code',
-                'jbonnydev_userpermissions_user_permission.user_id',
-                'jbonnydev_userpermissions_user_permission.permission_id',
-                'jbonnydev_userpermissions_user_permission.permission_state',
-                'jbonnydev_userpermissions_user_permission.created_at',
-                'jbonnydev_userpermissions_user_permission.updated_at'
-            );
-            $permissionsQueryResult = $model->user_permissions()->select('id', 'code')->where('permission_state', 1)->union($groupPermissionsQuery)->get();
-            if (!$permissionsQueryResult) {
-                $permissionsQueryResult = [];
-            } else {
-                $permissionsQueryResult = $permissionsQueryResult->toArray();
-            }
-            return $permissionsQueryResult;
-        }
-
-        function hasUserPermission($permissionInput, $column, $allowedPermissions) {
-            if (is_array($allowedPermissions) && count($allowedPermissions) > 0) {
-                foreach ($allowedPermissions as $permission) {
-                    if ($permission[$column] == $permissionInput) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        function normalizePermissionInput($permissions) {
-            if (!is_array($permissions)) {
-                $permissions = [$permissions];
-            }
-            $permissions = array_filter($permissions, function ($element) {
-                if (is_string($element) || is_int($element)) {
+    
+    function hasUserPermission($permissionInput, $column, $allowedPermissions) {
+        if (is_array($allowedPermissions) && count($allowedPermissions) > 0) {
+            foreach ($allowedPermissions as $permission) {
+                if ($permission[$column] == $permissionInput) {
                     return true;
                 }
-                return false;
-            });
-            return $permissions;
+            }
         }
+        return false;
+    }
 
+    function normalizePermissionInput($permissions) {
+        if (!is_array($permissions)) {
+            $permissions = [$permissions];
+        }
+        $permissions = array_filter($permissions, function ($element) {
+            if (is_string($element) || is_int($element)) {
+                return true;
+            }
+            return false;
+        });
+        return $permissions;
+    }
+
+    protected function extendUserModel()
+    {
         UserModel::extend(function($model)
         {
             $model->belongsToMany['user_permissions'] = [
@@ -143,6 +107,7 @@ class Plugin extends \System\Classes\PluginBase
                 'timestamps' => true,
                 'pivot' => ['permission_state'],
             ];
+
             $model->bindEvent('model.afterCreate', function() use ($model) {
                 $permissions = PermissionModel::all();
                 if ($permissions) {
@@ -151,19 +116,57 @@ class Plugin extends \System\Classes\PluginBase
                     }
                 }
             });
+
+            $model->addDynamicMethod('getPermissionsAttribute', function() use ($model) {
+                if (!$model->is_activated) {
+                    return [];
+                }
+                $groupPermissionsQuery = $model->user_permissions()->where('jbonnydev_userpermissions_user_permission.permission_state', 2)
+                ->join('users_groups', 'jbonnydev_userpermissions_user_permission.user_id', '=', 'users_groups.user_id')
+                ->join('jbonnydev_userpermissions_group_permission', function ($join) {
+                    $join->on('users_groups.user_group_id', '=', 'jbonnydev_userpermissions_group_permission.group_id')
+                    ->on(
+                        'jbonnydev_userpermissions_group_permission.permission_id',
+                        '=',
+                        'jbonnydev_userpermissions_user_permission.permission_id'
+                    )
+                    ->where('jbonnydev_userpermissions_group_permission.permission_state', '=', 1);
+                })
+                ->join('jbonnydev_userpermissions_permissions as permissions',
+                    'jbonnydev_userpermissions_group_permission.permission_id',
+                    '=',
+                    'permissions.id'
+                )->select(
+                    'permissions.id',
+                    'permissions.code',
+                    'jbonnydev_userpermissions_user_permission.user_id',
+                    'jbonnydev_userpermissions_user_permission.permission_id',
+                    'jbonnydev_userpermissions_user_permission.permission_state',
+                    'jbonnydev_userpermissions_user_permission.created_at',
+                    'jbonnydev_userpermissions_user_permission.updated_at'
+                );
+                $permissionsQueryResult = $model->user_permissions()->select('id', 'code')->where('permission_state', 1)->union($groupPermissionsQuery)->get();
+                if (!$permissionsQueryResult) {
+                    $permissionsQueryResult = [];
+                } else {
+                    $permissionsQueryResult = $permissionsQueryResult->toArray();
+                }
+                return $permissionsQueryResult;
+            });
+
             $model->addDynamicMethod('hasUserPermission', function($permissionsInput, $match = 'all') use ($model) {
                 if (!is_string($match) || $match != 'all' && $match != 'one') {
                     throw new ApplicationException('second parameter of hasUserPermission() must be of type string with a value of "all" or "one"!');
                 }
-                $permissionsInput = normalizePermissionInput($permissionsInput);
+                $permissionsInput = $this->normalizePermissionInput($permissionsInput);
                 if (is_array($permissionsInput) && count($permissionsInput) > 0) {
                     $result = [];
-                    $allowedPermissions = getAllowedPermissions($model);
+                    $allowedPermissions = $model->permissions;
                     foreach ($permissionsInput as $permissionInput) {
                         if (is_string($permissionInput)) {
-                            $result[] = hasUserPermission($permissionInput, 'code', $allowedPermissions);
+                            $result[] = $this->hasUserPermission($permissionInput, 'code', $allowedPermissions);
                         } elseif (is_int($permissionInput)) {
-                            $result[] = hasUserPermission($permissionInput, 'id', $allowedPermissions);
+                            $result[] = $this->hasUserPermission($permissionInput, 'id', $allowedPermissions);
                         }
                     }
                     if ($match == 'all') {
