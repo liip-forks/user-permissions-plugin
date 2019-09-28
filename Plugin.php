@@ -117,7 +117,7 @@ class Plugin extends \System\Classes\PluginBase
                 }
             });
 
-            $model->addDynamicMethod('getPermissionsAttribute', function() use ($model) {
+            $model->addDynamicMethod('getUserPermissions', function() use ($model) {
                 if (!$model->is_activated) {
                     return [];
                 }
@@ -161,7 +161,7 @@ class Plugin extends \System\Classes\PluginBase
                 $permissionsInput = $this->normalizePermissionInput($permissionsInput);
                 if (is_array($permissionsInput) && count($permissionsInput) > 0) {
                     $result = [];
-                    $allowedPermissions = $model->permissions;
+                    $allowedPermissions = $model->getUserPermissions();
                     foreach ($permissionsInput as $permissionInput) {
                         if (is_string($permissionInput)) {
                             $result[] = $this->hasUserPermission($permissionInput, 'code', $allowedPermissions);
